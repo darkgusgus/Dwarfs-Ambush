@@ -1,0 +1,36 @@
+Index: src/game/g_admin.c
+===================================================================
+--- src/game/g_admin.c	(revision 84)
++++ src/game/g_admin.c	(working copy)
+@@ -343,8 +343,8 @@
+      //kev: a bit of a hack, but there is no real point to
+      //creating a new admin flag for this, so i stole it from !help
+     {"specme", G_admin_putmespec, "h",
+-        "moves you to the spectators",
+-	""
++        "moves you to the spectators (can be done silently with the 's' argument)",
++	"(^5s^7)"
+     },
+ 	
+     {"suspendban", G_admin_suspendban, "B",
+@@ -4571,6 +4571,20 @@
+   }
+   
+   G_ChangeTeam( ent, PTE_NONE );
++
++  // check for silent '!specme s' - requires !kick permission
++  if( G_SayArgc() > 1 + skiparg )
++  {
++    char arg[ 2 ];
++
++    G_SayArgv( 1 + skiparg, arg, sizeof( arg ) );
++    if( ( arg[0] == 's' || arg[0] == 'S' ) && G_admin_permission( ent, 'k' ) )
++    {
++      ADMP("^3!specme: ^7 You have silently joined the spectators\n");
++      return qtrue;
++    }
++  }
++
+   AP( va("print \"^3!specme: ^7%s^7 decided to join the spectators\n\"", ent->client->pers.netname ) );
+   return qtrue;
+ }

@@ -1,0 +1,51 @@
+Index: g_combat.c
+===================================================================
+--- g_combat.c	(revision 966)
++++ g_combat.c	(working copy)
+@@ -213,6 +213,11 @@
+   {
+     attacker->client->lastkilled_client = self->s.number;
+ 
++  if( g_KillerHP.integer ) 
++   {
++     trap_SendServerCommand( self-g_entities, va( "print \"Your killer, %s^7, had %3i HP.\n\"", killerName, attacker->health ) );
++   }
++
+     if( attacker == self || OnSameTeam( self, attacker ) )
+     {
+       AddScore( attacker, -1 );
+Index: g_local.h
+===================================================================
+--- g_local.h	(revision 966)
++++ g_local.h	(working copy)
+@@ -1182,6 +1182,8 @@
+ extern  vmCvar_t  g_adminNameProtect;
+ extern  vmCvar_t  g_adminTempBan;
+ 
++extern  vmCvar_t  g_KillerHP;
++
+ extern  vmCvar_t  g_privateMessages;
+ 
+ void      trap_Printf( const char *fmt );
+Index: g_main.c
+===================================================================
+--- g_main.c	(revision 966)
++++ g_main.c	(working copy)
+@@ -129,6 +129,8 @@
+ vmCvar_t  g_adminNameProtect;
+ vmCvar_t  g_adminTempBan;
+ 
++vmCvar_t  g_KillerHP;
++
+ vmCvar_t  g_privateMessages;
+ 
+ vmCvar_t  g_tag;
+@@ -249,6 +251,8 @@
+   
+   { &g_privateMessages, "g_privateMessages", "1", CVAR_ARCHIVE, 0, qfalse  },
+   
++  { &g_KillerHP, "g_KillerHP", "1", CVAR_ARCHIVE, 0, qtrue  },
++  
+   { &g_tag, "g_tag", "main", CVAR_INIT, 0, qfalse },
+   
+   { &g_rankings, "g_rankings", "0", 0, 0, qfalse}

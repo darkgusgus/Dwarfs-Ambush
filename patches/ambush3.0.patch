@@ -1,0 +1,665 @@
+diff -x '\.svn' -ruw ./Makefile e:\z_arw\966\ambush3_new/Makefile
+--- ./Makefile	2008-12-05 17:33:08.000000000 +0100
++++ e:\z_arw\966\ambush3_new/Makefile	2008-12-05 18:41:36.000000000 +0100
+@@ -1218,6 +1218,7 @@
+   $(B)/base/game/g_ptr.o \
+   $(B)/base/game/g_weapon.o \
+   $(B)/base/game/g_admin.o \
++  $(B)/base/game/g_bot.o \
+   \
+   $(B)/base/qcommon/q_math.o \
+   $(B)/base/qcommon/q_shared.o
+Only in e:\z_arw\966\ambush3_new: ambush3.0.patch
+Only in e:\z_arw\966\ambush3_new: build
+Only in .: l5.4.patch
+Only in .: patch.exe
+diff -x '\.svn' -ruw ./src/game/g_active.c e:\z_arw\966\ambush3_new/src/game/g_active.c
+--- ./src/game/g_active.c	2008-12-05 17:33:08.000000000 +0100
++++ e:\z_arw\966\ambush3_new/src/game/g_active.c	2008-12-05 19:05:54.000000000 +0100
+@@ -388,6 +388,13 @@
+   client->oldbuttons = client->buttons;
+   client->buttons = ucmd->buttons;
+ 	
++  //ROTAX
++	//if bot
++  if( ent->r.svFlags & SVF_BOT ) {
++    	G_BotSpectatorThink( ent );
++    	return;
++  }
++
+    attack1 = ( ( client->buttons & BUTTON_ATTACK ) &&
+                !( client->oldbuttons & BUTTON_ATTACK ) );
+    attack3 = ( ( client->buttons & BUTTON_USE_HOLDABLE ) &&
+@@ -570,6 +577,11 @@
+ 
+   while ( client->time100 >= 100 )
+   {
++	  //ROTAX
++	  if( ent->r.svFlags & SVF_BOT ) {
++		  G_BotThink( ent );
++	  }
++    
+     client->time100 -= 100;
+ 
+     //if not trying to run then not trying to sprint
+@@ -1805,14 +1817,16 @@
+   // phone jack if they don't get any for a while
+   ent->client->lastCmdTime = level.time;
+ 
+-  if( !g_synchronousClients.integer )
++  //ROTAX
++  if( !( ent->r.svFlags & SVF_BOT ) && !g_synchronousClients.integer )
+     ClientThink_real( ent );
+ }
+ 
+ 
+ void G_RunClient( gentity_t *ent )
+ {
+-  if( !g_synchronousClients.integer )
++  //ROTAX
++  if( !( ent->r.svFlags & SVF_BOT ) && !g_synchronousClients.integer )
+     return;
+ 
+   ent->client->pers.cmd.serverTime = level.time;
+@@ -1940,5 +1954,3 @@
+ 
+   SendPendingPredictableEvents( &ent->client->ps );
+ }
+-
+-
+diff -x '\.svn' -ruw ./src/game/g_admin.c e:\z_arw\966\ambush3_new/src/game/g_admin.c
+--- ./src/game/g_admin.c	2008-12-05 17:33:08.000000000 +0100
++++ e:\z_arw\966\ambush3_new/src/game/g_admin.c	2008-12-05 18:06:22.000000000 +0100
+@@ -75,6 +75,17 @@
+       "\n ^3Example:^7 '!buildlog #10 h' skips 10 events, then shows the previous 10 events affecting human buildables"
+     },
+ 
++    //ROTAX
++    {"bot", G_admin_bot, "Z",
++      "Add or delete bot(s)",
++      "[^3add/del^7] [name] [^5aliens/humans^7] (skill)"
++    },
++    
++    {"botcmd", G_admin_botcmd, "z",
++      "Change bot behavior.",
++      "[^3name^7] [^5regular/idle/attack/standground/defensive/followprotect/followattack/followidle/teamkill^7]"
++    },
++
+     {"cancelvote", G_admin_cancelvote, "c",
+       "cancel a vote taking place",
+       ""
+@@ -1844,6 +1855,133 @@
+   return seconds;
+ }
+ 
++//ROTAX
++qboolean G_admin_bot( gentity_t *ent, int skiparg ) {
++	// add [name] (team) (skill)
++	// del [name]
++	int minargc;
++	
++	char command[10];
++	char name[ MAX_NAME_LENGTH ];
++	char name_s[ MAX_NAME_LENGTH ];
++	//char name2[ MAX_NAME_LENGTH ];
++	char name2_s[ MAX_NAME_LENGTH ];
++	char team[10];
++	int team_int;
++	char skill[2];
++	int skill_int;
++	qboolean success = qfalse;
++	int i, j;
++	
++	//char s2[ MAX_NAME_LENGTH ];
++	//char n2[ MAX_NAME_LENGTH ];
++	//int logmatch = -1, logmatches = 0;
++	//int i, j;
++	//qboolean exactmatch = qfalse;
++	
++	minargc = 3 + skiparg;
++	if( G_SayArgc() < minargc )	{
++		ADMP( "^7Please have at least command and name.\n" );
++		ADMP( "^3!bot: ^7usage: !bot [add/del] [name] (team) (skill)\n" );
++		return qfalse;
++	}
++
++	G_SayArgv( 1 + skiparg, command, sizeof( command ) );
++	G_SayArgv( 2 + skiparg, name, sizeof( name ) );
++	G_SanitiseName( name, name_s );
++	
++	if(!Q_stricmp(command,"add")) {
++		// add [name] [team] (skill)
++		minargc = 4 + skiparg;
++		if( G_SayArgc() < minargc )	{
++			ADMP( "^7Please have at least name and team.\n" );
++			ADMP( "^3!bot: ^7usage: !bot [add/del] [name] [humans/aliens] (skill)\n" );
++			return qfalse;
++		}
++		
++		G_SayArgv( 3 + skiparg, team, sizeof( team ) );
++		
++		if(!Q_stricmp(team,"humans")) {
++			team_int = PTE_HUMANS;
++		} else if(!Q_stricmp(team,"aliens")) {
++			team_int = PTE_ALIENS;
++		} else {
++			ADMP( "^7Invalid bot team.\n" );
++			ADMP( "^3!bot: ^7usage: !bot add [name] [humans/aliens] (skill)\n" );
++			return qfalse;
++		}
++		
++		minargc = 5 + skiparg;
++		if(G_SayArgc() < minargc) {
++			skill_int = 0;
++		} else {
++			G_SayArgv( 4 + skiparg, skill, sizeof( skill ) );
++			skill_int = atoi(skill);
++		}
++		
++		// got name, team_int and skill_int
++		G_BotAdd(name, team_int, skill_int);
++		return qtrue;
++	} else if(!Q_stricmp(command,"del")) {
++		// del [name]
++		success = qfalse;
++		for( i = 0; i < MAX_ADMIN_NAMELOGS && g_admin_namelog[ i ];i++ ) {
++			if( g_admin_namelog[ i ]->slot >= 0 ) {
++				for( j = 0; j < MAX_ADMIN_NAMELOG_NAMES && g_admin_namelog[ i ]->name[ j ][ 0 ]; j++ ) {
++					G_SanitiseName(g_admin_namelog[ i ]->name[ j ], name2_s);
++					if( strstr( name2_s, name_s ) ) {
++						G_BotDel(g_admin_namelog[ i ]->slot);
++						success = qtrue;
++					}
++				}
++			}
++		}
++		
++		return success;
++		//ADMP( "delete not implemented yet\n" );
++		//return qfalse;
++	}
++	
++	ADMP( "^3!bot: ^7usage: !bot [add/del] [name] (team) (skill)\n" );
++	return qfalse;
++}
++
++qboolean G_admin_botcmd( gentity_t *ent, int skiparg ) {
++	int minargc;
++	char name[ MAX_NAME_LENGTH ];
++	char name_s[ MAX_NAME_LENGTH ];
++	char name2_s[ MAX_NAME_LENGTH ];
++	char command[ 32 ];
++	int i, j;
++	qboolean success = qfalse;
++	
++	//[botname] [command]
++	minargc = 3 + skiparg;
++	if( G_SayArgc() < minargc )	{
++		ADMP( "^3!botcmd: ^7usage: !botcmd [botname] [command]\n" );
++		return qfalse;
++	}
++	
++	G_SayArgv( 1 + skiparg, name, sizeof( name ) );
++	G_SayArgv( 2 + skiparg, command, sizeof( command ) );
++	G_SanitiseName( name, name_s );
++	
++	success = qfalse;
++	for( i = 0; i < MAX_ADMIN_NAMELOGS && g_admin_namelog[ i ];i++ ) {
++		if( g_admin_namelog[ i ]->slot >= 0 ) {
++			for( j = 0; j < MAX_ADMIN_NAMELOG_NAMES && g_admin_namelog[ i ]->name[ j ][ 0 ]; j++ ) {
++				G_SanitiseName(g_admin_namelog[ i ]->name[ j ], name2_s);
++				if( strstr( name2_s, name_s ) ) {
++					G_BotCmd(ent, g_admin_namelog[ i ]->slot,command);
++					success = qtrue;
++				}
++			}
++		}
++	}
++	
++	return success;
++}
++
+ static qboolean admin_create_ban( gentity_t *ent,
+   char *netname,
+   char *guid,
+diff -x '\.svn' -ruw ./src/game/g_admin.h e:\z_arw\966\ambush3_new/src/game/g_admin.h
+--- ./src/game/g_admin.h	2008-12-05 17:33:08.000000000 +0100
++++ e:\z_arw\966\ambush3_new/src/game/g_admin.h	2008-12-05 18:07:41.000000000 +0100
+@@ -199,6 +199,10 @@
+ qboolean G_admin_designate( gentity_t *ent, int skiparg );
+ qboolean G_admin_cp( gentity_t *ent, int skiparg );
+ 
++//ROTAX
++qboolean G_admin_bot( gentity_t *ent, int skiparg );
++qboolean G_admin_botcmd( gentity_t *ent, int skiparg );
++
+ void G_admin_print( gentity_t *ent, char *m );
+ void G_admin_buffer_print( gentity_t *ent, char *m );
+ void G_admin_buffer_begin( void );
+Only in e:\z_arw\966\ambush3_new/src/game: g_bot.c
+diff -x '\.svn' -ruw ./src/game/g_cmds.c e:\z_arw\966\ambush3_new/src/game/g_cmds.c
+--- ./src/game/g_cmds.c	2008-12-05 17:33:08.000000000 +0100
++++ e:\z_arw\966\ambush3_new/src/game/g_cmds.c	2008-12-05 17:36:51.000000000 +0100
+@@ -1575,6 +1575,19 @@
+       return;
+     }
+ 
++    //ROTAX
++	  if (g_ambush.integer == 1)
++	  {
++	      gentity_t *bot;
++      	bot = &g_entities[clientNum];
++	      if( ( bot->r.svFlags & SVF_BOT ) )
++	      {      
++          trap_SendServerCommand( ent-g_entities,
++            "print \"callvote: you can't kick bots in ambush mod\n\"" );
++          return;
++        }
++  	}
++
+     // use ip in case this player disconnects before the vote ends
+     Com_sprintf( level.voteString, sizeof( level.voteString ),
+       "!ban %s \"%s\" vote kick", level.clients[ clientNum ].pers.ip,
+@@ -2036,6 +2049,18 @@
+       return;
+     }
+ 
++    //ROTAX
++	  if (g_ambush.integer == 1)
++	  {
++	      gentity_t *bot;
++      	bot = &g_entities[clientNum];
++	      if( ( bot->r.svFlags & SVF_BOT ) )
++	      {     
++          trap_SendServerCommand( ent-g_entities,
++            "print \"callvote: you can't kick bots in ambush mod\n\"" );
++          return;
++        }
++  	}
+ 
+     // use ip in case this player disconnects before the vote ends
+     Com_sprintf( level.teamVoteString[ cs_offset ],
+@@ -3018,6 +3043,13 @@
+   }
+   else if( upgrade != UP_NONE )
+   {
++    //ROTAX  
++    if( g_ambush.integer && upgrade == UP_JETPACK)
++    {
++      trap_SendServerCommand( ent-g_entities, va( "print \"You can't buy jetpack in Ambush mod\n\"" ) );
++      return;
++    }
++    
+     //already got this?
+     if( BG_InventoryContainsUpgrade( upgrade, ent->client->ps.stats ) )
+     {
+@@ -4927,4 +4959,3 @@
+ 	    
+      G_Printf( "cp: %s\n", ConcatArgs( 1 ) );
+  }
+-
+diff -x '\.svn' -ruw ./src/game/g_combat.c e:\z_arw\966\ambush3_new/src/game/g_combat.c
+--- ./src/game/g_combat.c	2008-12-05 17:33:08.000000000 +0100
++++ e:\z_arw\966\ambush3_new/src/game/g_combat.c	2008-12-05 17:39:16.000000000 +0100
+@@ -23,6 +23,10 @@
+ 
+ #include "g_local.h"
+ 
++//ROTAX
++void kill_aliens( void );
++void ambush_next_stage( void );
++
+ damageRegion_t  g_damageRegions[ PCL_NUM_CLASSES ][ MAX_LOCDAMAGE_REGIONS ];
+ int             g_numDamageRegions[ PCL_NUM_CLASSES ];
+ 
+@@ -309,6 +313,48 @@
+       }
+       else if( attacker->client->pers.teamSelection == PTE_HUMANS )
+       {
++        //ROTAX
++    	  if (g_ambush.integer == 1 && ROTACAK_ambush_rebuild_time_temp < level.time)//V rebuild time nepocitam killy
++    	  {
++          if( !tk )
++          {
++            ROTACAK_ambush_kills++;
++            
++            //ted to nastavi stage 2 atd.
++            if (ROTACAK_ambush_kills == g_ambush_granger_s1.integer
++             || (ROTACAK_ambush_kills - g_ambush_granger_s1.integer) == g_ambush_dretch_s2.integer
++             || (ROTACAK_ambush_kills - g_ambush_granger_s1.integer - g_ambush_dretch_s2.integer) == g_ambush_basilisk_s3.integer
++             || (ROTACAK_ambush_kills - g_ambush_granger_s1.integer - g_ambush_dretch_s2.integer - g_ambush_basilisk_s3.integer) == g_ambush_basilisk2_s4.integer
++             || (ROTACAK_ambush_kills - g_ambush_granger_s1.integer - g_ambush_dretch_s2.integer - g_ambush_basilisk_s3.integer - g_ambush_basilisk2_s4.integer) == g_ambush_marauder_s5.integer
++             || (ROTACAK_ambush_kills - g_ambush_granger_s1.integer - g_ambush_dretch_s2.integer - g_ambush_basilisk_s3.integer - g_ambush_basilisk2_s4.integer - g_ambush_marauder_s5.integer) == g_ambush_marauder2_s6.integer
++             || (ROTACAK_ambush_kills - g_ambush_granger_s1.integer - g_ambush_dretch_s2.integer - g_ambush_basilisk_s3.integer - g_ambush_basilisk2_s4.integer - g_ambush_marauder_s5.integer - g_ambush_marauder2_s6.integer) == g_ambush_dragon_s7.integer
++             || (ROTACAK_ambush_kills - g_ambush_granger_s1.integer - g_ambush_dretch_s2.integer - g_ambush_basilisk_s3.integer - g_ambush_basilisk2_s4.integer - g_ambush_marauder_s5.integer - g_ambush_marauder2_s6.integer - g_ambush_dragon_s7.integer) == g_ambush_dragon2_s8.integer)
++              ambush_next_stage();
++            else if ((ROTACAK_ambush_kills - g_ambush_granger_s1.integer - g_ambush_dretch_s2.integer - g_ambush_basilisk_s3.integer - g_ambush_basilisk2_s4.integer - g_ambush_marauder_s5.integer - g_ambush_marauder2_s6.integer - g_ambush_dragon_s7.integer - g_ambush_dragon2_s8.integer) == g_ambush_tyrants_to_win.integer)
++            {
++              //misto humans wins se alienum znici spawny
++              int       i;
++              gentity_t *e;
++          
++              for( i = 1, e = g_entities + i; i < level.num_entities; i++, e++ )
++              {
++                if( e->s.modelindex == BA_A_SPAWN )
++                  G_Damage( e, NULL, NULL, NULL, NULL, 10000, 0, MOD_SUICIDE );
++              }
++            
++              trap_SendServerCommand( -1, va( "cp \"^1 ====> WELL DONE - NO EGGS <====  ^7\"" ) );
++              trap_SendServerCommand( -1, va( "print \"^1 ====> WELL DONE - NO EGGS <====  ^7\n\"" ) );
++              
++              //turn ff off, otherwise all tyrants kill each others without humans
++              if (g_ambush_no_egg_ffoff.integer == 1)
++              {
++                trap_Cvar_Set( "g_friendlyFire", 0 );
++                trap_Cvar_Set( "g_friendlyFireAliens", 0 );
++              }
++            }
++          }
++        }
++        
+         level.humanStatsCounters.kills++;
+       }
+      }
+@@ -1124,6 +1170,10 @@
+   if( dflags & DAMAGE_NO_KNOCKBACK )
+     knockback = 0;
+ 
++  //ROTAX
++  if (g_ambush.integer == 1 && g_ambush_kill_spawns.integer == 0 && ROTACAK_ambush_stage != 9 && targ->s.modelindex == BA_A_SPAWN)//nejdou znicit spawny
++    return;
++
+   // figure momentum add, even if the damage won't be taken
+   if( knockback && targ->client )
+   {
+@@ -1607,3 +1657,47 @@
+ 
+   return hitClient;
+ }
++
++//ROTAX
++void kill_aliens()
++{
++  int       i;
++  gentity_t *ent;
++
++  for( i = 0; i < level.numConnectedClients; i++ )
++  {
++    ent = &g_entities[ i ];
++    
++    if( ent->health > 0 && ent->client->pers.teamSelection == PTE_ALIENS)
++    {
++      G_Damage( ent, NULL, NULL, NULL, NULL, 10000, 0, MOD_SUICIDE );
++    }
++  }
++}
++
++//ROTAX
++void ambush_next_stage()
++{
++  char    string[ 1024 ];
++  int     min, tens, sec;
++  int increment = g_ambush_rebuild_time.integer * 1000;
++
++  ROTACAK_ambush_stage++;
++
++  if (g_ambush_stage_suicide.integer == 1)
++    kill_aliens();
++
++  sec = ((level.time - level.startTime) + increment) / 1000;
++
++  min = sec / 60;
++  sec -= min * 60;
++  tens = sec / 10;
++  sec -= tens * 10;
++
++  Com_sprintf( string, sizeof( string ), "%i:%i%i", min, tens, sec );
++
++  trap_SendServerCommand( -1, va( "cp \"^1--> Prepare for next wave (^2Stage %i^1) <--\n^1(attack in %s)^7\"", ROTACAK_ambush_stage, string ) );
++  trap_SendServerCommand( -1, va( "print \"^1--> Prepare for next wave (^2Stage %i^1) <--\n^1(attack in %s)^7\n\"", ROTACAK_ambush_stage, string ) );
++  
++  ROTACAK_ambush_rebuild_time_temp = level.time + increment;
++}
+diff -x '\.svn' -ruw ./src/game/g_local.h e:\z_arw\966\ambush3_new/src/game/g_local.h
+--- ./src/game/g_local.h	2008-12-05 17:33:08.000000000 +0100
++++ e:\z_arw\966\ambush3_new/src/game/g_local.h	2008-12-05 18:03:39.000000000 +0100
+@@ -74,6 +74,20 @@
+ 
+ #define SP_PODIUM_MODEL   "models/mapobjects/podium/podium4.md3"
+ 
++//ROTAX
++typedef enum
++{
++  BOT_REGULAR = 1,
++  BOT_IDLE,
++  BOT_ATTACK,
++  BOT_STAND_GROUND,
++  BOT_DEFENSIVE,
++  BOT_FOLLOW_FRIEND_PROTECT,
++  BOT_FOLLOW_FRIEND_ATTACK,
++  BOT_FOLLOW_FRIEND_IDLE,
++  BOT_TEAM_KILLER
++} botCommand_t;
++
+ //============================================================================
+ 
+ struct gentity_s
+@@ -187,6 +201,16 @@
+ 
+   int               noise_index;
+ 
++  //ROTAX
++  //for targeting following
++  botCommand_t		botCommand;
++  gentity_t         *botEnemy;
++  gentity_t         *botFriend;
++  int				botFriendLastSeen;  
++  int				botEnemyLastSeen;
++  int				botSkillLevel;
++  int				botTeam;
++
+   // timing variables
+   float             wait;
+   float             random;
+@@ -789,6 +813,21 @@
+ void      G_SpawnEntitiesFromString( void );
+ char      *G_NewString( const char *string );
+ 
++//ROTAX
++// g_bot.c
++//
++void G_BotAdd( char *name, int team, int skill );
++void G_BotDel( int clientNum );
++void G_BotCmd( gentity_t *master, int clientNum, char *command );
++void G_BotThink( gentity_t *self );
++void G_BotSpectatorThink( gentity_t *self );
++// todo: are these suppose to be out here?!
++qboolean botAimAtTarget( gentity_t *self, gentity_t *target );
++int botFindClosestEnemy( gentity_t *self, qboolean includeTeam );
++qboolean botTargetInRange( gentity_t *self, gentity_t *target );
++int botGetDistanceBetweenPlayer( gentity_t *self, gentity_t *player );
++qboolean botShootIfTargetInRange( gentity_t *self, gentity_t *target );
++
+ //
+ // g_cmds.c
+ //
+@@ -1362,6 +1401,30 @@
+ 
+ extern  vmCvar_t  g_buildLogMaxLength;
+ 
++//ROTAX
++extern  vmCvar_t  g_ambush_granger_s1;
++extern  vmCvar_t  g_ambush_dretch_s2;
++extern  vmCvar_t  g_ambush_basilisk_s3;
++extern  vmCvar_t  g_ambush_basilisk2_s4;
++extern  vmCvar_t  g_ambush_marauder_s5;
++extern  vmCvar_t  g_ambush_marauder2_s6;
++extern  vmCvar_t  g_ambush_dragon_s7;
++extern  vmCvar_t  g_ambush_dragon2_s8;
++extern  vmCvar_t  g_ambush_tyrants_to_win;
++extern  vmCvar_t  g_ambush_dodge;
++extern  vmCvar_t  g_ambush_dodge_random;
++extern  vmCvar_t  g_ambush_rebuild_time;
++extern  vmCvar_t  g_ambush_sec_to_start;
++extern  vmCvar_t  g_ambush_stage_suicide;
++extern  vmCvar_t  g_ambush_no_egg_ffoff;
++extern  vmCvar_t  g_ambush;
++extern  vmCvar_t  g_ambush_kill_spawns;
++extern  vmCvar_t  g_ambush_att_buildables;
++extern  vmCvar_t  g_ambush_range;
++extern  int  ROTACAK_ambush_rebuild_time_temp;
++extern  int  ROTACAK_ambush_stage;
++extern  int  ROTACAK_ambush_kills;
++
+ void      trap_Printf( const char *fmt );
+ void      trap_Error( const char *fmt );
+ int       trap_Milliseconds( void );
+diff -x '\.svn' -ruw ./src/game/g_main.c e:\z_arw\966\ambush3_new/src/game/g_main.c
+--- ./src/game/g_main.c	2008-12-05 17:33:08.000000000 +0100
++++ e:\z_arw\966\ambush3_new/src/game/g_main.c	2008-12-05 17:42:48.000000000 +0100
+@@ -23,8 +23,8 @@
+ 
+ #include "g_local.h"
+ 
+-#define QVM_NAME       "Lakitu7's QVM"
+-#define QVM_VERSIONNUM      "5.4"
++#define QVM_NAME       "Ambush"
++#define QVM_VERSIONNUM      "3.0"
+ 
+ level_locals_t  level;
+ 
+@@ -183,6 +183,30 @@
+ vmCvar_t  g_msg;
+ vmCvar_t  g_msgTime;
+ 
++//ROTAX
++vmCvar_t  g_ambush;
++vmCvar_t  g_ambush_granger_s1;
++vmCvar_t  g_ambush_dretch_s2;
++vmCvar_t  g_ambush_basilisk_s3;
++vmCvar_t  g_ambush_basilisk2_s4;
++vmCvar_t  g_ambush_marauder_s5;
++vmCvar_t  g_ambush_marauder2_s6;
++vmCvar_t  g_ambush_dragon_s7;
++vmCvar_t  g_ambush_dragon2_s8;
++vmCvar_t  g_ambush_tyrants_to_win;
++vmCvar_t  g_ambush_dodge;
++vmCvar_t  g_ambush_dodge_random;
++vmCvar_t  g_ambush_rebuild_time;
++vmCvar_t  g_ambush_sec_to_start;
++vmCvar_t  g_ambush_stage_suicide;
++vmCvar_t  g_ambush_no_egg_ffoff;
++vmCvar_t  g_ambush_kill_spawns;
++vmCvar_t  g_ambush_att_buildables;
++vmCvar_t  g_ambush_range;
++int  ROTACAK_ambush_rebuild_time_temp = 0;
++int  ROTACAK_ambush_stage = 1;
++int  ROTACAK_ambush_kills = 0;
++
+ static cvarTable_t   gameCvarTable[ ] =
+ {
+   // don't override the cheat state set by the system
+@@ -348,6 +372,27 @@
+   { &g_rankings, "g_rankings", "0", 0, 0, qfalse },
+   { &g_allowShare, "g_allowShare", "0", CVAR_ARCHIVE | CVAR_SERVERINFO, 0, qfalse},
+   { &g_banNotice, "g_banNotice", "", CVAR_ARCHIVE, 0, qfalse  },
++  
++  //rotax
++  { &g_ambush_granger_s1, "g_ambush_granger_s1", "20", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_dretch_s2, "g_ambush_dretch_s2", "20", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_basilisk_s3, "g_ambush_basilisk_s3", "20", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_basilisk2_s4, "g_ambush_basilisk2_s4", "20", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_marauder_s5, "g_ambush_marauder_s5", "20", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_marauder2_s6, "g_ambush_marauder2_s6", "20", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_dragon_s7, "g_ambush_dragon_s7", "20", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_dragon2_s8, "g_ambush_dragon2_s8", "20", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_tyrants_to_win, "g_ambush_tyrants_to_win", "20", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_dodge, "g_ambush_dodge", "50", CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_dodge_random, "g_ambush_dodge_random", "0", CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_rebuild_time, "g_ambush_rebuild_time", "0", CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_sec_to_start, "g_ambush_sec_to_start", "0", CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_stage_suicide, "g_ambush_stage_suicide", "0", CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_no_egg_ffoff, "g_ambush_no_egg_ffoff", "1", CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_kill_spawns, "g_ambush_kill_spawns", "0", CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_att_buildables, "g_ambush_att_buildables", "0", CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush_range, "g_ambush_range", "10000", CVAR_ARCHIVE, 0, qfalse  },
++  { &g_ambush, "g_ambush", "0", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qfalse  }
+ };
+ 
+ static int gameCvarTableSize = sizeof( gameCvarTable ) / sizeof( gameCvarTable[ 0 ] );
+@@ -740,6 +785,15 @@
+   trap_Cvar_Set( "g_suddenDeath", 0 );
+   level.suddenDeathBeginTime = g_suddenDeathTime.integer * 60000;
+ 
++  //ROTAX
++  trap_Cvar_Set( "g_ambush", "0" );
++  trap_Cvar_Set( "g_friendlyFire", "1" );
++  trap_Cvar_Set( "g_friendlyFireAliens", "1" );
++
++  ROTACAK_ambush_rebuild_time_temp = 0;
++  ROTACAK_ambush_stage = 1;
++  ROTACAK_ambush_kills = 0;
++
+   G_Printf( "-----------------------------------\n" );
+ 
+   G_RemapTeamShaders( );
+@@ -2223,7 +2277,30 @@
+   {
+     //humans win
+     level.lastWin = PTE_HUMANS;
++    
++    //ROTAX
++    if (g_ambush.integer == 1 && ROTACAK_ambush_stage == 9)
++    {
++      char    string[ 1024 ];
++      int     min, tens, sec;
++    
++      sec = (level.time - level.startTime) / 1000;
++    
++      min = sec / 60;
++      sec -= min * 60;
++      tens = sec / 10;
++      sec -= tens * 10;
++    
++      Com_sprintf( string, sizeof( string ), "%i:%i%i", min, tens, sec );
++      
++      if (g_ambush_stage_suicide.integer == 1)
++        trap_SendServerCommand( -1, va("print \"Humans win (^3Time record: %s^7) (Suicides: On)\n\"", string));
++      else
++        trap_SendServerCommand( -1, va("print \"Humans win (^3Time record: %s^7) (Suicides: Off)\n\"", string));
++    }
++    else
+     trap_SendServerCommand( -1, "print \"Humans win\n\"");
++      
+     trap_SetConfigstring( CS_WINNER, "Humans Win" );
+     LogExit( "Humans win." );
+     G_admin_maplog_result( "h" );
+@@ -2741,4 +2818,3 @@
+   
+   level.pausedTime=0;
+ }
+-
+diff -x '\.svn' -ruw ./src/game/g_public.h e:\z_arw\966\ambush3_new/src/game/g_public.h
+--- ./src/game/g_public.h	2008-10-16 22:26:34.000000000 +0200
++++ e:\z_arw\966\ambush3_new/src/game/g_public.h	2008-12-05 17:52:49.000000000 +0100
+@@ -35,6 +35,9 @@
+ // https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=551
+ #define SVF_CLIENTMASK 0x00000002
+ 
++//ROTAX
++#define SVF_BOT					0x00000008	// set if the entity is a bot
++
+ #define SVF_BROADCAST           0x00000020  // send to all connected clients
+ #define SVF_PORTAL              0x00000040  // merge a second pvs at origin2 into snapshots
+ #define SVF_USE_CURRENT_ORIGIN  0x00000080  // entity->r.currentOrigin instead of entity->s.origin
+@@ -259,4 +262,3 @@
+   // The game can issue trap_argc() / trap_argv() commands to get the command
+   // and parameters.  Return qfalse if the game doesn't recognize it as a command.
+ } gameExport_t;
+-
+Only in e:\z_arw\966\ambush3_new/src/tools/asm: q3asm.exe
+Only in e:\z_arw\966\ambush3_new/src/tools/lcc: build-mingw32-x86
+Only in e:\z_arw\966\ambush3_new/src/tools: q3asm.exe
+Only in e:\z_arw\966\ambush3_new/src/tools: q3cpp.exe
+Only in e:\z_arw\966\ambush3_new/src/tools: q3lcc.exe
+Only in e:\z_arw\966\ambush3_new/src/tools: q3rcc.exe

@@ -1,0 +1,113 @@
+Index: src/game/tremulous.h
+===================================================================
+--- src/game/tremulous.h	(revision 119)
++++ src/game/tremulous.h	(working copy)
+@@ -468,6 +468,9 @@
+ #define JETPACK_SINK_SPEED          192.0f //down movement speed
+ #define JETPACK_DISABLE_TIME        1000 //time to disable the jetpack when player damaged
+ #define JETPACK_DISABLE_CHANCE      0.3f
++#define JETPACK_MAX_FUEL            60
++#define JETPACK_REGEN_RATE          3
++#define JETPACK_USE_RATE            2
+ 
+ #define BSUIT_PRICE                 400
+ #define BSUIT_POISON_PROTECTION     4
+Index: src/game/g_local.h
+===================================================================
+--- src/game/g_local.h	(revision 119)
++++ src/game/g_local.h	(working copy)
+@@ -509,6 +509,8 @@
+   qboolean            allowedToPounce;
+ 
+   qboolean            charging;
++  
++  float               jetpackfuel;
+ 
+   vec3_t              hovelOrigin;          // player origin before entering hovel
+ 
+@@ -1363,6 +1365,8 @@
+ 
+ extern  vmCvar_t  g_buildLogMaxLength;
+ 
++extern  vmCvar_t  g_fueledjetpack;
++
+ void      trap_Printf( const char *fmt );
+ void      trap_Error( const char *fmt );
+ int       trap_Milliseconds( void );
+Index: src/game/g_active.c
+===================================================================
+--- src/game/g_active.c	(revision 119)
++++ src/game/g_active.c	(working copy)
+@@ -896,6 +896,29 @@
+     {
+       G_Damage( ent, NULL, NULL, NULL, NULL, 5, DAMAGE_NO_ARMOR, MOD_SUICIDE );
+     }
++    
++    //my new jetpack code
++    if( g_fueledjetpack.integer == 1 ) {
++      //if we have jetpack and its on
++      if( BG_InventoryContainsUpgrade( UP_JETPACK, client->ps.stats ) && BG_UpgradeIsActive( UP_JETPACK, client->ps.stats ) ) {
++        //check if fuels 0 if so deactivate it if not give a 10 second fuel low warning and take JETPACK_USE_RATE from fuel
++        if( client->jetpackfuel <= 0.0f ) {
++          BG_DeactivateUpgrade( UP_JETPACK, client->ps.stats ); 
++        } else if( client->jetpackfuel < 10.0f && client->jetpackfuel > 0.0f) {
++          client->jetpackfuel = client->jetpackfuel - JETPACK_USE_RATE;
++          trap_SendServerCommand( client - level.clients, "cp \"^3Fuel ^1Low!!!!!^7\nLand now.\"" );
++        } else {
++          client->jetpackfuel = client->jetpackfuel - JETPACK_USE_RATE;
++        }
++        //if jetpack isnt active regenerate fuel and give a message when its full
++      } else if( BG_InventoryContainsUpgrade( UP_JETPACK, client->ps.stats ) && !BG_UpgradeIsActive( UP_JETPACK, client->ps.stats ) ) {
++        if( client->jetpackfuel > ( JETPACK_MAX_FUEL - 10.0f ) && client->jetpackfuel <= JETPACK_MAX_FUEL  ) {
++          client->jetpackfuel = client->jetpackfuel + JETPACK_REGEN_RATE;
++          trap_SendServerCommand( client - level.clients, "cp \"^3Fuel Status:^2Full!!!!!^7\n\"" );
++        } else if( client->jetpackfuel < JETPACK_MAX_FUEL ) 
++          client->jetpackfuel = client->jetpackfuel + JETPACK_REGEN_RATE;
++      }
++    }
+   }
+ 
+   while( client->time10000 >= 10000 )
+Index: src/game/g_main.c
+===================================================================
+--- src/game/g_main.c	(revision 119)
++++ src/game/g_main.c	(working copy)
+@@ -183,6 +183,8 @@
+ vmCvar_t  g_msg;
+ vmCvar_t  g_msgTime;
+ 
++vmCvar_t  g_fueledjetpack;
++
+ static cvarTable_t   gameCvarTable[ ] =
+ {
+   // don't override the cheat state set by the system
+@@ -348,6 +350,8 @@
+   { &g_rankings, "g_rankings", "0", 0, 0, qfalse },
+   { &g_allowShare, "g_allowShare", "0", CVAR_ARCHIVE | CVAR_SERVERINFO, 0, qfalse},
+   { &g_banNotice, "g_banNotice", "", CVAR_ARCHIVE, 0, qfalse  },
++  
++  { &g_fueledjetpack, "g_fueledjetpack", "0", CVAR_ARCHIVE, 0, qfalse  }
+ };
+ 
+ static int gameCvarTableSize = sizeof( gameCvarTable ) / sizeof( gameCvarTable[ 0 ] );
+Index: Makefile
+===================================================================
+--- Makefile	(revision 119)
++++ Makefile	(working copy)
+@@ -21,11 +21,11 @@
+   COMPILE_ARCH=$(shell uname -m | sed -e s/i.86/x86/)
+ endif
+ 
+-BUILD_CLIENT     =
+-BUILD_CLIENT_SMP =
+-BUILD_SERVER     =
+-BUILD_GAME_SO    =
+-BUILD_GAME_QVM   =
++BUILD_CLIENT     = 0
++BUILD_CLIENT_SMP = 0
++BUILD_SERVER     = 0
++BUILD_GAME_SO    = 0
++BUILD_GAME_QVM   = 1
+ 
+ #############################################################################
+ #
