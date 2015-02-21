@@ -1,0 +1,55 @@
+From 25839f6224e6239681cada931088d884780539c6 Mon Sep 17 00:00:00 2001
+From: Marc H. Thoben <napkin@develz.org>
+Date: Wed, 21 Jan 2009 23:39:38 +0100
+Subject: [PATCH] Execution of layout specific configs
+  * reads cfg beside layout file with same name as layout
+
+---
+ src/game/g_buildable.c |   10 ++++++++++
+ src/game/g_main.c      |    2 ++
+ 2 files changed, 12 insertions(+), 0 deletions(-)
+
+diff --git a/src/game/g_buildable.c b/src/game/g_buildable.c
+index 888dce7..8dd12ec 100644
+--- a/src/game/g_buildable.c
++++ b/src/game/g_buildable.c
+@@ -4187,6 +4187,16 @@ void G_LayoutLoad( void )
+     }
+     layout++;
+   }
++
++  if( trap_FS_FOpenFile( va( "layouts/%s/%s.cfg", map, level.layout ), NULL, FS_READ ) )
++  {
++    trap_SendConsoleCommand( EXEC_APPEND,
++        va( "exec layouts/%s/%s.cfg", map, level.layout ) );
++
++    trap_Cvar_Set( "g_LayoutConfigsLoaded", "1" );
++  }
++
++
+ }
+ 
+ void G_BaseSelfDestruct( pTeam_t team )
+diff --git a/src/game/g_main.c b/src/game/g_main.c
+index 66e90e1..0bbf530 100644
+--- a/src/game/g_main.c
++++ b/src/game/g_main.c
+@@ -318,6 +318,7 @@ static cvarTable_t   gameCvarTable[ ] =
+   { &g_shove, "g_shove", "15", CVAR_ARCHIVE, 0, qfalse  },
+   { &g_mapConfigs, "g_mapConfigs", "", CVAR_ARCHIVE, 0, qfalse  },
+   { NULL, "g_mapConfigsLoaded", "0", CVAR_ROM, 0, qfalse  },
++  { NULL, "g_LayoutConfigsLoaded", "0", CVAR_ROM, 0, qfalse  },
+ 
+   { &g_layouts, "g_layouts", "", CVAR_LATCH, 0, qfalse  },
+   { &g_layoutAuto, "g_layoutAuto", "1", CVAR_ARCHIVE, 0, qfalse  },
+@@ -682,6 +683,7 @@ void G_InitGame( int levelTime, int randomSeed, int restart )
+ 
+   // we're done with g_mapConfigs, so reset this for the next map
+   trap_Cvar_Set( "g_mapConfigsLoaded", "0" );
++  trap_Cvar_Set( "g_LayoutConfigsLoaded", "0" );
+ 
+   if ( g_admin.string[ 0 ] ) {
+     G_admin_readconfig( NULL, 0 );
+-- 
+1.6.0.4
+

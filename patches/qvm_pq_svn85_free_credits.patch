@@ -1,0 +1,69 @@
+Index: src/game/g_local.h
+===================================================================
+--- src/game/g_local.h	(revision 85)
++++ src/game/g_local.h	(working copy)
+@@ -1419,6 +1419,8 @@
+ extern  vmCvar_t  g_radiationCredits;
+ extern  vmCvar_t  g_radiationCreditsCount;
+ 
++extern  vmCvar_t  g_freeCredits;
++
+ extern  vmCvar_t  g_buyAll;
+ extern  vmCvar_t  g_multipleWeapons;
+ extern  vmCvar_t  g_devmapVotes;
+Index: src/game/g_main.c
+===================================================================
+--- src/game/g_main.c	(revision 85)
++++ src/game/g_main.c	(working copy)
+@@ -193,6 +193,8 @@
+ vmCvar_t  g_radiationCredits;
+ vmCvar_t  g_radiationCreditsCount;
+ 
++vmCvar_t  g_freeCredits;
++
+ vmCvar_t  g_dretchPunt;
+ 
+ vmCvar_t  g_allowActions;
+@@ -450,6 +452,8 @@
+   { &g_radiationCredits, "g_radiationCredits", "0", CVAR_ARCHIVE, 0, qfalse  },
+   { &g_radiationCreditsCount, "g_radiationCreditsCount", "0", CVAR_ARCHIVE, 0, qfalse  },
+ 
++  { &g_freeCredits, "g_freeCredits", "0", CVAR_ARCHIVE, 0, qfalse  },
++
+   { &g_deconTime, "g_deconTime", "0", CVAR_ARCHIVE, 0, qfalse  },
+ 
+   { &g_buildLogMaxLength, "g_buildLogMaxLength", "25", CVAR_ARCHIVE, 0, qfalse  },
+@@ -906,6 +910,13 @@
+     trap_Cvar_Set( "g_practiceCount", va( "%d", g_practiceCount.integer - 1 ) );
+   }
+ 
++  // free credits expiration
++  if( g_freeCredits.integer > 1 )
++  {
++    trap_Cvar_Set( "g_freeCredits",
++      va( "%d", ( g_freeCredits.integer > 2 ) ? g_freeCredits.integer - 1 : 0 ) );
++  }
++
+   // general initialization
+   G_FindTeams( );
+ 
+Index: src/game/g_client.c
+===================================================================
+--- src/game/g_client.c	(revision 85)
++++ src/game/g_client.c	(working copy)
+@@ -1757,6 +1757,15 @@
+ 
+   client->ps.stats[ STAT_STAMINA ] = MAX_STAMINA;
+ 
++  //free credits
++  if( g_freeCredits.integer && ent != spawn )
++  {
++    if( client->ps.stats[ STAT_PTEAM ] == PTE_ALIENS )
++      client->ps.persistant[ PERS_CREDIT ] = ALIEN_MAX_KILLS;
++    else if( client->ps.stats[ STAT_PTEAM ] == PTE_HUMANS )
++      client->ps.persistant[ PERS_CREDIT ] = HUMAN_MAX_CREDITS;
++  }
++
+   G_SetOrigin( ent, spawn_origin );
+   VectorCopy( spawn_origin, client->ps.origin );
+ 

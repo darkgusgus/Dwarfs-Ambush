@@ -1,0 +1,64 @@
+=============
+DOCUMENTATION
+=============
+
+See the following for details
+http://tremulous.net/forum/index.php?topic=8864.0
+Information
+lakitu7_qvm.pdf
+
+This mod is based on PBOT 3.0 and Lakitu7 5.5
+
+=============
+MODIFICATIONS
+=============
+
+CVARS
+-- g_freeCredits
+-- g_KillerHP
+-- g_jetpackFuel
+-- g_specNoclip
+-- g_abuild_dmg
+-- g_hbuild_dmg
+-- g_deconMode
+-- g_buildMode
+-- g_buildTimer (replaces g_nobuildtimer)
+-- REMOVED: g_ambush_upgrade
+-- REMOVED: g_ambush_upgrade_cost
+
+COMMANDS
+-- !denyjoin and !allowjoin (flag: denyjoin)
+-- !leave (flag: leave)
+-- !stage (flag: stage)
+-- !bp (flag: bp)
+-- REMOVED: !donate
+
+FEATURES
+-- Mute includes taunts
+-- Layout specific configs (layouts/map/layout_name.cfg)
+-- Server side demos with a supported Tremded (like TremFusion)
+-- !bot add [a|h] [name] instead of !bot add [aliens|humans] [name]
+-- !lock b and !unlock b for 'both teams'
+-- Show layouts in !rotation
+-- Restores mute and denybuild automatically
+-- Silent specme with kick flag (!specme s)
+-- Bots are ready on intermission
+-- Must be designated to remove OM/RC
+-- Delayed spawning for players on alien team during Ambush
+-- Reasonable default skill level for bots
+-- Prevent shoving enemies
+-- Unlagged off by default
+-- Flood limit attempted decon of protected structure
+-- Explain why you can't decon a node/egg when it's your last
+-- Prevent team changing when grabbed by a basilisk
+-- Bots can connect when a password is set
+-- Show a message to the killer of a bot
+
+-- REVERT: credits for each kill
+-- REVERT: spread when crouching
+-- REVERT: team kill messages on alien team
+-- REVERT: receive no credits for repairing structures
+-- REVERT: damage modifiers
+-- REVERT: Grenades
+-- REVERT: Bsuits can no longer crouch
+-- REVERT: g_bot_evolve is respected when not playing ambush

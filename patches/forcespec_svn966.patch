@@ -1,0 +1,181 @@
+Index: src/game/g_local.h
+===================================================================
+--- src/game/g_local.h	(revision 966)
++++ src/game/g_local.h	(working copy)
+@@ -353,6 +353,8 @@
+   qboolean            muted;
+   qboolean            denyBuild;
+   int                 adminLevel;
++  qboolean            specd;
++  qboolean            saved;
+ } clientPersistant_t;
+ 
+ #define MAX_UNLAGGED_MARKERS 10
+Index: src/game/g_admin.c
+===================================================================
+--- src/game/g_admin.c	(revision 966)
++++ src/game/g_admin.c	(working copy)
+@@ -176,6 +176,16 @@
+     {"unmute", G_admin_mute, "m",
+       "unmute a muted player",
+       "[^3name|slot#^7]"
++    },
++
++    {"forcespec", G_admin_forcespec, "F",
++      "disable joining of teams for a player",
++      "[^3name|slot#^7]"
++    },
++
++    {"unforcespec", G_admin_unforcespec, "F",
++      "enable joining of teams for a player",
++      "[^3name|slot#^7]"
+     }
+   };
+ 
+@@ -3030,3 +3040,96 @@
+     g_admin_commands[ i ] = NULL;
+   }
+ }
++
++qboolean G_admin_forcespec( gentity_t *ent, int skiparg )
++{
++  int pids[ MAX_CLIENTS ];
++  char name[ MAX_NAME_LENGTH ], err[ MAX_STRING_CHARS ];
++  int minargc;
++  gentity_t *vic;
++
++
++    minargc = 2 + skiparg;
++
++  if( G_SayArgc() < minargc )
++  {
++    ADMP( "^3!forcespec: ^7usage: !forcespec [name|slot#]\n" );
++    return qfalse;
++  }
++  G_SayArgv( 1 + skiparg, name, sizeof( name ) );
++
++  if( G_ClientNumbersFromString( name, pids ) != 1 )
++  {
++    G_MatchOnePlayer( pids, err, sizeof( err ) );
++    ADMP( va( "^3!forcespec: ^7%s\n", err ) );
++    return qfalse;
++  }
++
++  vic = &g_entities[ pids[ 0 ] ];
++
++ if ( vic->client->pers.specd == qtrue )
++ {
++ ADMP( "^3!forcespec: ^7player already forcespeced\n" );
++
++	return qfalse;
++ }
++
++//push them to the spec team
++G_ChangeTeam( vic, PTE_NONE );
++//tell g_cmds that they cannot join teams
++vic->client->pers.specd = qtrue;
++//tell the person they cant join teams
++CPx( pids[ 0 ], "cp \"^1you can no longer join teams\"" );
++//tell everyone that you cant join teams
++AP( va( "print \"^3!forcespec: ^7%s^7 has disallowed joining of teams for ^7%s\n\"", ( ent ) ? ent->client->pers.netname : "console", vic->client->pers.netname ) );
++//tell g_cmds to save their creds
++vic->client->pers.saved = qtrue;
++	return qtrue;
++
++}
++
++qboolean G_admin_unforcespec( gentity_t *ent, int skiparg )
++{
++  int pids[ MAX_CLIENTS ];
++  char name[ MAX_NAME_LENGTH ], err[ MAX_STRING_CHARS ];
++  int minargc;
++  gentity_t *vic;
++
++
++    minargc = 2 + skiparg;
++
++  if( G_SayArgc() < minargc )
++  {
++    ADMP( "^3!unforcespec: ^7usage: !unforcespec [name|slot#]\n" );
++    return qfalse;
++  }
++  G_SayArgv( 1 + skiparg, name, sizeof( name ) );
++
++  if( G_ClientNumbersFromString( name, pids ) != 1 )
++  {
++    G_MatchOnePlayer( pids, err, sizeof( err ) );
++    ADMP( va( "^3!unforcespec: ^7%s\n", err ) );
++    return qfalse;
++  }
++
++  vic = &g_entities[ pids[ 0 ] ];
++
++ if ( vic->client->pers.specd == qfalse )
++ {
++ ADMP( "^3!unforcespec: ^7player is not forcespeced\n" );
++
++	return qfalse;
++ }
++
++
++
++//remove the limitation
++vic->client->pers.specd = qfalse;
++//tell them it was removed
++CPx( pids[ 0 ], "cp \"^1you can now join teams\"" );
++//tell everyone that it was removed
++AP( va( "print \"^3!unforcespec: ^7%s^7 has allowed joining of teams for ^7%s\n\"", ( ent ) ? ent->client->pers.netname : "console", vic->client->pers.netname ) );
++	return qtrue;
++
++}
++
+Index: src/game/g_cmds.c
+===================================================================
+--- src/game/g_cmds.c	(revision 966)
++++ src/game/g_cmds.c	(working copy)
+@@ -591,7 +591,7 @@
+ 
+   // under certain circumstances, clients can keep their kills and credits
+   // when switching teams
+-  if( G_admin_permission( ent, ADMF_TEAMCHANGEFREE ) ||
++  if(ent->client->pers.saved || G_admin_permission( ent, ADMF_TEAMCHANGEFREE ) ||
+     ( ( oldTeam == PTE_HUMANS || oldTeam == PTE_ALIENS )
+     && ( level.time - ent->client->pers.teamChangeTime ) > 60000 ) )
+   {
+@@ -638,6 +638,12 @@
+ 
+   //update ClientInfo
+   ClientUserinfoChanged( ent->client->ps.clientNum );
++
++//make sure it doesnt let them save all the time
++  if( !ent->client->pers.teamSelection == PTE_NONE && ent->client->pers.saved )
++  {
++  ent->client->pers.saved = qfalse;
++  }
+ }
+ 
+ /*
+@@ -676,6 +682,11 @@
+     team = PTE_NONE;
+   else if( !Q_stricmp( s, "aliens" ) )
+   {
++    if ( ent->client->pers.specd )
++    {
++      trap_SendServerCommand( ent-g_entities, va( "print \"you cannot join teams\n\"" ) );
++      return; 
++    }
+     if( level.alienTeamLocked )
+     {
+       trap_SendServerCommand( ent-g_entities,
+@@ -699,6 +710,11 @@
+   }
+   else if( !Q_stricmp( s, "humans" ) )
+   {
++    if ( ent->client->pers.specd )
++    {
++      trap_SendServerCommand( ent-g_entities, va( "print \"you cannot join teams\n\"" ) );
++      return; 
++    }
+     if( level.humanTeamLocked )
+     {
+       trap_SendServerCommand( ent-g_entities,

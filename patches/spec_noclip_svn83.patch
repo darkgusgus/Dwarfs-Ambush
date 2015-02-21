@@ -1,0 +1,55 @@
+Index: src/game/g_local.h
+===================================================================
+--- src/game/g_local.h	(revision 83)
++++ src/game/g_local.h	(working copy)
+@@ -1466,6 +1466,7 @@
+ extern vmCvar_t  g_wwNoHovelBuild;
+ 
+ extern vmCvar_t  g_moverBuild;
++extern vmCvar_t  g_specNoclip;
+ 
+ void      trap_Printf( const char *fmt );
+ void      trap_Error( const char *fmt );
+Index: src/game/g_active.c
+===================================================================
+--- src/game/g_active.c	(revision 83)
++++ src/game/g_active.c	(working copy)
+@@ -393,7 +393,12 @@
+   if( client->sess.spectatorState == SPECTATOR_LOCKED || client->sess.spectatorState == SPECTATOR_FOLLOW )
+     client->ps.pm_type = PM_FREEZE;
+   else
+-    client->ps.pm_type = PM_SPECTATOR;
++  {
++    if( g_specNoclip.integer )
++     client->ps.pm_type = PM_NOCLIP;
++    else
++     client->ps.pm_type = PM_SPECTATOR;
++  }
+ 
+   if ( client->sess.spectatorState == SPECTATOR_FOLLOW )
+   {
+Index: src/game/g_main.c
+===================================================================
+--- src/game/g_main.c	(revision 83)
++++ src/game/g_main.c	(working copy)
+@@ -257,7 +257,9 @@
+ 
+ vmCvar_t  g_moverBuild;
+ 
++vmCvar_t  g_specNoclip;
+ 
++
+ static cvarTable_t   gameCvarTable[ ] =
+ {
+   // don't override the cheat state set by the system
+@@ -496,7 +498,9 @@
+   { &g_wwNoHovelBuild, "g_wwNoHovelBuild", "0", CVAR_ARCHIVE, 0, qfalse  },
+   
+   
+-  { &g_moverBuild, "g_moverBuild", "0", CVAR_ARCHIVE, 0, qfalse  }
++  { &g_moverBuild, "g_moverBuild", "0", CVAR_ARCHIVE, 0, qfalse  },
++  
++  { &g_specNoclip, "g_specNoclip", "0", CVAR_ARCHIVE, 0, qtrue  }
+ };
+ 
+ static int gameCvarTableSize = sizeof( gameCvarTable ) / sizeof( gameCvarTable[ 0 ] );
